@@ -18,7 +18,12 @@ chrome.runtime.onInstalled.addListener(() => {
   chrome.contextMenus.removeAll(() => {
     chrome.contextMenus.create({
       id: "sendToAI",
-      title: "Send to AI",
+      title: "Send to AI (Text only)",
+      contexts: ["selection"]
+    });
+    chrome.contextMenus.create({
+      id: "sendToAIWithImage",
+      title: "Send to AI (With image)",
       contexts: ["selection"]
     });
   });
@@ -28,6 +33,8 @@ chrome.runtime.onInstalled.addListener(() => {
 chrome.contextMenus.onClicked.addListener((info, tab) => {
   if (info.menuItemId === "sendToAI" && info.selectionText) {
     sendToAI(info.selectionText, tab.id);
+  } else if (info.menuItemId === "sendToAIWithImage" && info.selectionText) {
+    captureAndAnalyze(info.selectionText, tab.id);
   }
 });
 
@@ -38,6 +45,9 @@ const storedSelections = new Map();
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === "analyzeText" && request.text) {
     sendToAI(request.text, sender.tab.id);
+  } else if (request.action === "analyzeWithImage" && request.text) {
+    // Capture screenshot and send with text
+    captureAndAnalyze(request.text, sender.tab.id);
   } else if (request.action === "storeSelection" && request.text) {
     // Store selection immediately when user selects text
     // Keep the longest selection (in case multiple frames report)
@@ -78,7 +88,22 @@ chrome.commands.onCommand.addListener((command) => {
   }
 });
 
-async function sendToAI(text, tabId) {
+async function captureAndAnalyze(text, tabId) {
+  try {
+    // Capture the visible tab as a screenshot
+    const screenshot = await chrome.tabs.captureVisibleTab(null, { format: 'png' });
+    // Send to AI with image
+    await sendToAI(text, tabId, screenshot);
+  } catch (error) {
+    chrome.tabs.sendMessage(tabId, {
+      action: "showPopup",
+      content: `Screenshot error: ${error.message}`,
+      error: true
+    });
+  }
+}
+
+async function sendToAI(text, tabId, imageDataUrl = null) {
   // Show loading state
   chrome.tabs.sendMessage(tabId, { action: "showPopup", content: "...", loading: true });
 
@@ -111,7 +136,25 @@ async function sendToAI(text, tabId) {
       model = settings.model || config.defaultModel;
     }
 
-    const systemPrompt = `You answer multiple choice questions and solve math problems. Rules:
+    const systemPrompt = imageDataUrl
+      ? `You analyze questions with text and images to identify the correct answer. Rules:
+
+MULTIPLE CHOICE WITH IMAGE:
+1. Examine BOTH the text and image carefully
+2. Identify the question and all answer choices (from text OR visible in image)
+3. Determine the correct answer based on the question context
+4. Output ONLY the correct option: number/letter + answer text
+5. Format: "1) True" or "B) Photosynthesis" or "C) Mitochondria"
+6. Ignore "Selected"/"Unselected" markers
+7. NO explanations - ONLY the correct answer
+
+IMAGE ANALYSIS:
+- Look for diagrams, charts, graphs, or visual information
+- Read any text visible in the image
+- Use visual context to determine the correct answer
+
+ALWAYS: Just output the correct answer - nothing else`
+      : `You answer multiple choice questions and solve math problems. Rules:
 
 MULTIPLE CHOICE:
 1. Output the correct option number/letter followed by the option text
@@ -134,6 +177,23 @@ ALWAYS: Keep answers concise - NO explanations or reasoning`;
     if (provider === "gemini") {
       // Gemini API format - endpoint includes model name
       const geminiEndpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
+
+      const parts = [];
+
+      if (imageDataUrl) {
+        // Extract base64 data from data URL
+        const base64Data = imageDataUrl.split(',')[1];
+        parts.push({ text: systemPrompt + "\n\n" + text });
+        parts.push({
+          inline_data: {
+            mime_type: "image/png",
+            data: base64Data
+          }
+        });
+      } else {
+        parts.push({ text: systemPrompt + "\n\n" + text });
+      }
+
       response = await fetch(geminiEndpoint, {
         method: "POST",
         headers: {
@@ -141,13 +201,7 @@ ALWAYS: Keep answers concise - NO explanations or reasoning`;
           "x-goog-api-key": apiKey
         },
         body: JSON.stringify({
-          contents: [
-            {
-              parts: [
-                { text: systemPrompt + "\n\n" + text }
-              ]
-            }
-          ]
+          contents: [{ parts }]
         })
       });
 
@@ -160,6 +214,28 @@ ALWAYS: Keep answers concise - NO explanations or reasoning`;
       answer = data.candidates[0].content.parts[0].text.trim();
     } else {
       // OpenAI-compatible API format (Groq, OpenAI, custom)
+      const messages = [
+        { role: "system", content: systemPrompt }
+      ];
+
+      if (imageDataUrl) {
+        // Vision API format with image
+        messages.push({
+          role: "user",
+          content: [
+            { type: "text", text: text },
+            {
+              type: "image_url",
+              image_url: {
+                url: imageDataUrl
+              }
+            }
+          ]
+        });
+      } else {
+        messages.push({ role: "user", content: text });
+      }
+
       response = await fetch(endpoint, {
         method: "POST",
         headers: {
@@ -168,11 +244,8 @@ ALWAYS: Keep answers concise - NO explanations or reasoning`;
         },
         body: JSON.stringify({
           model: model,
-          messages: [
-            { role: "system", content: systemPrompt },
-            { role: "user", content: text }
-          ],
-          max_tokens: 50,
+          messages: messages,
+          max_tokens: imageDataUrl ? 150 : 50,
           temperature: 0.1
         })
       });

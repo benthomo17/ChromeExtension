@@ -115,7 +115,7 @@ function createFloatingButton() {
       display: flex;
       align-items: center;
       justify-content: center;
-      transition: transform 0.2s, opacity 0.2s;
+      transition: transform 0.2s, opacity 0.2s, background 0.2s;
       opacity: 0;
       pointer-events: none;
       transform: scale(0.8);
@@ -130,10 +130,36 @@ function createFloatingButton() {
       transform: scale(1.1);
       background: #1976D2;
     }
+    .ai-btn.with-image {
+      background: #FF9800;
+    }
+    .ai-btn.with-image:hover {
+      background: #F57C00;
+    }
     .ai-btn svg {
       width: 18px;
       height: 18px;
       fill: currentColor;
+    }
+    .ai-btn-tooltip {
+      position: fixed;
+      bottom: 70px;
+      right: 20px;
+      background: rgba(0, 0, 0, 0.8);
+      color: white;
+      padding: 6px 10px;
+      border-radius: 4px;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      font-size: 12px;
+      white-space: nowrap;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.2s;
+      z-index: 2147483647;
+    }
+    .ai-btn:hover + .ai-btn-tooltip,
+    .ai-btn-tooltip.visible {
+      opacity: 1;
     }
   `;
   buttonShadowRoot.appendChild(style);
@@ -145,9 +171,26 @@ function createFloatingButton() {
       <path d="M12 2L14.39 9.61L22 12L14.39 14.39L12 22L9.61 14.39L2 12L9.61 9.61L12 2Z" />
     </svg>
   `;
-  
+
+  const tooltip = document.createElement("div");
+  tooltip.className = "ai-btn-tooltip";
+  tooltip.textContent = "Click: Text only | Ctrl+Click: With image";
+
   floatingButton.addEventListener("click", handleButtonClick, true);
+
+  // Change button color when Ctrl/Cmd is held
+  floatingButton.addEventListener("mouseenter", (e) => {
+    if (e.ctrlKey || e.metaKey) {
+      floatingButton.classList.add("with-image");
+    }
+  });
+
+  floatingButton.addEventListener("mouseleave", () => {
+    floatingButton.classList.remove("with-image");
+  });
+
   buttonShadowRoot.appendChild(floatingButton);
+  buttonShadowRoot.appendChild(tooltip);
 
   // Append to body if available, otherwise documentElement
   (document.body || document.documentElement).appendChild(buttonContainer);
@@ -176,6 +219,9 @@ async function handleButtonClick(e) {
   e.stopPropagation();
   e.preventDefault();
 
+  // Check if Ctrl (Windows/Linux) or Cmd (Mac) is held - use image mode
+  const useImage = e.ctrlKey || e.metaKey;
+
   try {
     // Copy selection to clipboard (this captures full selection like context menu)
     document.execCommand('copy');
@@ -184,7 +230,13 @@ async function handleButtonClick(e) {
     const text = await navigator.clipboard.readText();
 
     if (text && text.trim()) {
-      chrome.runtime.sendMessage({ action: "analyzeText", text: text.trim() });
+      if (useImage) {
+        // Send with image capture
+        chrome.runtime.sendMessage({ action: "analyzeWithImage", text: text.trim() });
+      } else {
+        // Send text only
+        chrome.runtime.sendMessage({ action: "analyzeText", text: text.trim() });
+      }
     } else {
       chrome.runtime.sendMessage({ action: "collectAndAnalyze" });
     }
@@ -244,6 +296,19 @@ document.addEventListener("mousedown", (e) => {
   // But let the selection change handle it (mouseup will fire later)
   // If user clicks to clear selection, mouseup will see empty selection and hide it.
 });
+
+// Update button appearance when Ctrl/Cmd is pressed
+document.addEventListener("keydown", (e) => {
+  if ((e.key === "Control" || e.key === "Meta") && floatingButton && floatingButton.classList.contains("visible")) {
+    floatingButton.classList.add("with-image");
+  }
+}, true);
+
+document.addEventListener("keyup", (e) => {
+  if ((e.key === "Control" || e.key === "Meta") && floatingButton) {
+    floatingButton.classList.remove("with-image");
+  }
+}, true);
 
 // Existing Popup Logic
 function showPopup(content, isLoading = false, isError = false) {

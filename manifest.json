@@ -9,7 +9,8 @@
     "storage",
     "scripting",
     "clipboardRead",
-    "clipboardWrite"
+    "clipboardWrite",
+    "tabs"
   ],
   "host_permissions": [
     "https://api.openai.com/*",
