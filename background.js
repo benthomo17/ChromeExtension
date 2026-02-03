@@ -80,7 +80,7 @@ chrome.commands.onCommand.addListener((command) => {
 
 async function sendToAI(text, tabId) {
   // Show loading state
-  chrome.tabs.sendMessage(tabId, { action: "showPopup", content: "Thinking...", loading: true });
+  chrome.tabs.sendMessage(tabId, { action: "showPopup", content: "...", loading: true });
 
   try {
     // Get settings from storage
