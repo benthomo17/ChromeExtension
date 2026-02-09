@@ -130,12 +130,6 @@ function createFloatingButton() {
       transform: scale(1.1);
       background: #1976D2;
     }
-    .ai-btn.with-image {
-      background: #FF9800;
-    }
-    .ai-btn.with-image:hover {
-      background: #F57C00;
-    }
     .ai-btn svg {
       width: 18px;
       height: 18px;
@@ -174,20 +168,9 @@ function createFloatingButton() {
 
   const tooltip = document.createElement("div");
   tooltip.className = "ai-btn-tooltip";
-  tooltip.textContent = "Click: Text only | Ctrl+Click: With image";
+  tooltip.textContent = "Click: Analyze question + image";
 
   floatingButton.addEventListener("click", handleButtonClick, true);
-
-  // Change button color when Ctrl/Cmd is held
-  floatingButton.addEventListener("mouseenter", (e) => {
-    if (e.ctrlKey || e.metaKey) {
-      floatingButton.classList.add("with-image");
-    }
-  });
-
-  floatingButton.addEventListener("mouseleave", () => {
-    floatingButton.classList.remove("with-image");
-  });
 
   buttonShadowRoot.appendChild(floatingButton);
   buttonShadowRoot.appendChild(tooltip);
@@ -219,9 +202,6 @@ async function handleButtonClick(e) {
   e.stopPropagation();
   e.preventDefault();
 
-  // Check if Ctrl (Windows/Linux) or Cmd (Mac) is held - use image mode
-  const useImage = e.ctrlKey || e.metaKey;
-
   try {
     // Copy selection to clipboard (this captures full selection like context menu)
     document.execCommand('copy');
@@ -230,13 +210,8 @@ async function handleButtonClick(e) {
     const text = await navigator.clipboard.readText();
 
     if (text && text.trim()) {
-      if (useImage) {
-        // Send with image capture
-        chrome.runtime.sendMessage({ action: "analyzeWithImage", text: text.trim() });
-      } else {
-        // Send text only
-        chrome.runtime.sendMessage({ action: "analyzeText", text: text.trim() });
-      }
+      // Always send selection with image capture for merged question + image analysis.
+      chrome.runtime.sendMessage({ action: "analyzeWithImage", text: text.trim() });
     } else {
       chrome.runtime.sendMessage({ action: "collectAndAnalyze" });
     }
@@ -296,19 +271,6 @@ document.addEventListener("mousedown", (e) => {
   // But let the selection change handle it (mouseup will fire later)
   // If user clicks to clear selection, mouseup will see empty selection and hide it.
 });
-
-// Update button appearance when Ctrl/Cmd is pressed
-document.addEventListener("keydown", (e) => {
-  if ((e.key === "Control" || e.key === "Meta") && floatingButton && floatingButton.classList.contains("visible")) {
-    floatingButton.classList.add("with-image");
-  }
-}, true);
-
-document.addEventListener("keyup", (e) => {
-  if ((e.key === "Control" || e.key === "Meta") && floatingButton) {
-    floatingButton.classList.remove("with-image");
-  }
-}, true);
 
 // Existing Popup Logic
 function showPopup(content, isLoading = false, isError = false) {

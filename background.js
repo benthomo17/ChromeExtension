@@ -61,7 +61,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     const tabId = sender.tab.id;
     const text = storedSelections.get(tabId);
     if (text) {
-      sendToAI(text, tabId);
+      captureAndAnalyze(text, tabId);
       storedSelections.delete(tabId);
     } else {
       chrome.tabs.sendMessage(tabId, {
@@ -70,21 +70,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         error: true
       });
     }
-  }
-});
-
-// Handle keyboard shortcut
-chrome.commands.onCommand.addListener((command) => {
-  if (command === "send-to-ai") {
-    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-      if (tabs[0]) {
-        chrome.tabs.sendMessage(tabs[0].id, { action: "getSelection" }, (response) => {
-          if (response && response.text) {
-            sendToAI(response.text, tabs[0].id);
-          }
-        });
-      }
-    });
   }
 });
 

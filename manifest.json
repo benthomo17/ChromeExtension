@@ -13,6 +13,7 @@
     "tabs"
   ],
   "host_permissions": [
+    "<all_urls>",
     "https://api.openai.com/*",
     "https://api.groq.com/*",
     "https://generativelanguage.googleapis.com/*",
@@ -29,15 +30,6 @@
       "all_frames": true
     }
   ],
-  "commands": {
-    "send-to-ai": {
-      "suggested_key": {
-        "default": "Ctrl+Shift+A",
-        "mac": "Command+Shift+A"
-      },
-      "description": "Send selected text to AI"
-    }
-  },
   "options_ui": {
     "page": "options.html",
     "open_in_tab": true
