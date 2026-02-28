@@ -1,7 +1,7 @@
 const PROVIDERS = {
   gemini: {
     endpoint: "https://generativelanguage.googleapis.com/v1beta/models",
-    defaultModel: "gemini-3-flash-preview"
+    defaultModel: "gemini-3.1-flash-preview"
   },
   groq: {
     endpoint: "https://api.groq.com/openai/v1/chat/completions",

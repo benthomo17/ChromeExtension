@@ -4,8 +4,8 @@ const PROVIDERS = {
     endpoint: "https://generativelanguage.googleapis.com/v1beta/models",
     apiKeyHint: 'Get your API key from <a href="https://aistudio.google.com/apikey" target="_blank">aistudio.google.com/apikey</a>',
     models: [
-      { id: "gemini-3-flash-preview", name: "Gemini 3 Flash (recommended)" },
-      { id: "gemini-3-pro-preview", name: "Gemini 3 Pro" },
+      { id: "gemini-3.1-flash-preview", name: "Gemini 3.1 Flash (recommended)" },
+      { id: "gemini-3.1-pro-preview", name: "Gemini 3.1 Pro" },
       { id: "gemini-2.5-flash", name: "Gemini 2.5 Flash" },
       { id: "gemini-2.5-pro", name: "Gemini 2.5 Pro" }
     ]
