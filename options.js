@@ -4,10 +4,11 @@ const PROVIDERS = {
     endpoint: "https://generativelanguage.googleapis.com/v1beta/models",
     apiKeyHint: 'Get your API key from <a href="https://aistudio.google.com/apikey" target="_blank">aistudio.google.com/apikey</a>',
     models: [
-      { id: "gemini-3.1-flash-preview", name: "Gemini 3.1 Flash (recommended)" },
-      { id: "gemini-3.1-pro-preview", name: "Gemini 3.1 Pro" },
+      { id: "gemini-2.0-flash", name: "Gemini 2.0 Flash (recommended)" },
       { id: "gemini-2.5-flash", name: "Gemini 2.5 Flash" },
-      { id: "gemini-2.5-pro", name: "Gemini 2.5 Pro" }
+      { id: "gemini-2.5-pro", name: "Gemini 2.5 Pro" },
+      { id: "gemini-1.5-pro", name: "Gemini 1.5 Pro" },
+      { id: "gemini-1.5-flash", name: "Gemini 1.5 Flash" }
     ]
   },
   groq: {
@@ -19,7 +20,8 @@ const PROVIDERS = {
       { id: "llama-3.3-70b-versatile", name: "Llama 3.3 70B" },
       { id: "llama-3.1-8b-instant", name: "Llama 3.1 8B (fast)" },
       { id: "mixtral-8x7b-32768", name: "Mixtral 8x7B" },
-      { id: "gemma2-9b-it", name: "Gemma 2 9B" }
+      { id: "gemma2-9b-it", name: "Gemma 2 9B" },
+      { id: "grok-4.20", name: "Grok 4.20" }
     ]
   },
   openai: {
@@ -31,6 +33,18 @@ const PROVIDERS = {
       { id: "gpt-4o", name: "GPT-4o" },
       { id: "gpt-4-turbo", name: "GPT-4 Turbo" },
       { id: "gpt-3.5-turbo", name: "GPT-3.5 Turbo (fast)" }
+    ]
+  },
+  openrouter: {
+    name: "OpenRouter",
+    endpoint: "https://openrouter.ai/api/v1/chat/completions",
+    apiKeyHint: 'Get your API key from <a href="https://openrouter.ai/keys" target="_blank">openrouter.ai/keys</a>',
+    models: [
+      { id: "google/gemini-flash-1.5", name: "Google Gemini Flash 1.5" },
+      { id: "mistralai/mistral-7b-instruct-v0.2", name: "Mistral 7B Instruct" },
+      { id: "openai/gpt-4o", name: "OpenAI GPT-4o" },
+      { id: "anthropic/claude-3-haiku", name: "Anthropic Claude 3 Haiku" },
+      { id: "grok-4.20", name: "Grok 4.20" }
     ]
   },
   custom: {

@@ -1,7 +1,7 @@
 const PROVIDERS = {
   gemini: {
     endpoint: "https://generativelanguage.googleapis.com/v1beta/models",
-    defaultModel: "gemini-3.1-flash-preview"
+    defaultModel: "gemini-2.0-flash"
   },
   groq: {
     endpoint: "https://api.groq.com/openai/v1/chat/completions",
@@ -10,6 +10,10 @@ const PROVIDERS = {
   openai: {
     endpoint: "https://api.openai.com/v1/chat/completions",
     defaultModel: "gpt-4o-mini"
+  },
+  openrouter: {
+    endpoint: "https://openrouter.ai/api/v1/chat/completions",
+    defaultModel: "google/gemini-flash-1.5"
   }
 };
 
@@ -117,47 +121,31 @@ async function sendToAI(text, tabId, imageDataUrl = null) {
       model = settings.customModel;
     } else {
       const config = PROVIDERS[provider];
+      if (!config) {
+        throw new Error(`Invalid provider: '${provider}'. Please re-select your provider in the extension options.`);
+      }
       endpoint = config.endpoint;
       model = settings.model || config.defaultModel;
     }
 
     const systemPrompt = imageDataUrl
-      ? `You analyze questions with text and images to identify the correct answer. Rules:
+      ? `CRITICAL: You MUST output ONLY the correct answer choice, nothing else.
 
-MULTIPLE CHOICE WITH IMAGE:
-1. Examine BOTH the text and image carefully
-2. Identify the question and all answer choices (from text OR visible in image)
-3. Determine the correct answer based on the question context
-4. Output ONLY the correct option: number/letter + answer text
-5. Format: "1) True" or "B) Photosynthesis" or "C) Mitochondria"
-6. Ignore "Selected"/"Unselected" markers
-7. NO explanations - ONLY the correct answer
+Analyze the question and image to find the correct answer.
+Output format: "A) Answer text" or "1) Answer text" or just the answer text.
+NO explanations. NO reasoning. NO additional text whatsoever.
+Output the answer choice ONLY.`
+      : `CRITICAL: You MUST output ONLY the correct answer choice, nothing else.
 
-IMAGE ANALYSIS:
-- Look for diagrams, charts, graphs, or visual information
-- Read any text visible in the image
-- Use visual context to determine the correct answer
-
-ALWAYS: Just output the correct answer - nothing else`
-      : `You answer multiple choice questions and solve math problems. Rules:
-
-MULTIPLE CHOICE:
-1. Output the correct option number/letter followed by the option text
-2. Ignore any "Selected"/"Unselected" markers - they are irrelevant
-3. Format: "1) True" or "B) Photosynthesis"
-4. NO explanations - just the number and the option text exactly as shown
-
-MATH PROBLEMS:
-1. Solve conversions (fractions, decimals, percentages, mixed numbers)
-2. Solve equations and fill-in-the-box problems
-3. Show only the final answer in simplest form
-4. For fractions: reduce to simplest terms (e.g., "3/4" not "6/8")
-5. For mixed numbers: use format like "2 1/3"
-6. For fill-in-the-box: just provide the number/value
-
-ALWAYS: Keep answers concise - NO explanations or reasoning`;
+For multiple choice: Output "A) Option" or "1) Option" format - ONLY the choice, no explanation.
+For math: Output ONLY the final answer in simplest form.
+NO explanations. NO reasoning. NO additional text whatsoever.
+Output the answer ONLY.`;
 
     let response, data, answer;
+    const supportsVisionMessages = provider === "openai" || provider === "openrouter";
+    const canUseImage = Boolean(imageDataUrl) && (provider === "gemini" || supportsVisionMessages);
+    const effectiveImageDataUrl = canUseImage ? imageDataUrl : null;
 
     if (provider === "gemini") {
       // Gemini API format - endpoint includes model name
@@ -165,9 +153,9 @@ ALWAYS: Keep answers concise - NO explanations or reasoning`;
 
       const parts = [];
 
-      if (imageDataUrl) {
+      if (effectiveImageDataUrl) {
         // Extract base64 data from data URL
-        const base64Data = imageDataUrl.split(',')[1];
+        const base64Data = effectiveImageDataUrl.split(',')[1];
         parts.push({ text: systemPrompt + "\n\n" + text });
         parts.push({
           inline_data: {
@@ -203,7 +191,7 @@ ALWAYS: Keep answers concise - NO explanations or reasoning`;
         { role: "system", content: systemPrompt }
       ];
 
-      if (imageDataUrl) {
+      if (effectiveImageDataUrl) {
         // Vision API format with image
         messages.push({
           role: "user",
@@ -212,7 +200,7 @@ ALWAYS: Keep answers concise - NO explanations or reasoning`;
             {
               type: "image_url",
               image_url: {
-                url: imageDataUrl
+                url: effectiveImageDataUrl
               }
             }
           ]
@@ -230,7 +218,7 @@ ALWAYS: Keep answers concise - NO explanations or reasoning`;
         body: JSON.stringify({
           model: model,
           messages: messages,
-          max_tokens: imageDataUrl ? 150 : 50,
+          max_tokens: effectiveImageDataUrl ? 150 : 50,
           temperature: 0.1
         })
       });
@@ -243,6 +231,21 @@ ALWAYS: Keep answers concise - NO explanations or reasoning`;
 
       answer = data.choices[0].message.content.trim();
     }
+
+    // Post-process answer to extract just the choice if model returned too much text
+    // Take first line if multiple lines, or first sentence if very long
+    const lines = answer.split('\n');
+    const firstLine = lines[0].trim();
+    if (firstLine.length < 200 && !firstLine.toLowerCase().includes('explanation')) {
+      answer = firstLine;
+    } else if (firstLine.length >= 200) {
+      // If still too long, try to extract just the choice (pattern like "A) text" or "1) text")
+      const choiceMatch = answer.match(/^[A-Z0-9]+[.)\s]+[^.!?\n]{1,150}/i);
+      if (choiceMatch) {
+        answer = choiceMatch[0].trim();
+      }
+    }
+
     chrome.tabs.sendMessage(tabId, { action: "showPopup", content: answer });
 
   } catch (error) {
