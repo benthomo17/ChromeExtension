@@ -17,6 +17,106 @@ const PROVIDERS = {
   }
 };
 
+function normalizeAnswerContent(content) {
+  if (content == null) return "";
+
+  if (typeof content === "string") {
+    return content.trim();
+  }
+
+  if (Array.isArray(content)) {
+    return content
+      .map((part) => {
+        if (typeof part === "string") return part;
+        if (typeof part?.text === "string") return part.text;
+        if (typeof part?.content === "string") return part.content;
+        return "";
+      })
+      .join("")
+      .trim();
+  }
+
+  if (typeof content === "object" && typeof content.text === "string") {
+    return content.text.trim();
+  }
+
+  return "";
+}
+
+function extractGeminiAnswer(data) {
+  console.log("[AI Extension] Gemini raw response:", JSON.stringify(data));
+
+  const candidate = data?.candidates?.[0];
+  const parts = candidate?.content?.parts;
+  const answer = Array.isArray(parts)
+    ? parts.map((part) => part?.text || "").join("").trim()
+    : "";
+
+  if (!answer) {
+    const finishReason = candidate?.finishReason;
+    const blockReason = data?.promptFeedback?.blockReason;
+    if (finishReason === "MAX_TOKENS") {
+      throw new Error("Response cut off (MAX_TOKENS). Raise the token cap or use a non-reasoning model.");
+    }
+    if (finishReason === "SAFETY" || finishReason === "RECITATION" || blockReason) {
+      throw new Error(`Blocked by Gemini safety filter (${blockReason || finishReason}). The aggressive system prompt may be triggering it.`);
+    }
+    throw new Error(`Empty Gemini response${finishReason ? ` (${finishReason})` : ""}. Check service worker console for raw data.`);
+  }
+
+  return answer;
+}
+
+function extractChatAnswer(data) {
+  console.log("[AI Extension] Chat raw response:", JSON.stringify(data));
+
+  // OpenRouter sometimes returns 200 OK with an error object in the body
+  if (data?.error) {
+    const errMsg = typeof data.error === "string" ? data.error : (data.error.message || JSON.stringify(data.error));
+    throw new Error(`Provider error: ${errMsg}`);
+  }
+
+  if (!Array.isArray(data?.choices) || data.choices.length === 0) {
+    throw new Error("Provider returned no choices. The upstream model may be unavailable — try a different model.");
+  }
+
+  const choice = data.choices[0];
+  const message = choice?.message;
+
+  // Try every place a model might have stashed the answer:
+  // - message.content: standard
+  // - message.reasoning / reasoning_content: DeepSeek-R1, Kimi K2, o1-style reasoning models on OpenRouter
+  // - message.refusal: OpenAI structured refusal field
+  // - choice.text: legacy completion format
+  const rawContent =
+    message?.content
+    || message?.reasoning_content
+    || message?.reasoning
+    || choice?.text
+    || message?.refusal;
+  const answer = normalizeAnswerContent(rawContent);
+
+  if (!answer) {
+    const finishReason = choice?.finish_reason || choice?.native_finish_reason;
+    if (message?.refusal) {
+      throw new Error(`Model refused: ${message.refusal}`);
+    }
+    if (Array.isArray(message?.tool_calls) && message.tool_calls.length) {
+      throw new Error("Model returned a tool call instead of text.");
+    }
+    if (finishReason === "length") {
+      throw new Error("Response cut off (length). Raise the token cap or use a non-reasoning model.");
+    }
+    if (finishReason === "content_filter") {
+      throw new Error("Response blocked by content filter — try a different model or rephrase.");
+    }
+    const keys = message ? Object.keys(message).join(",") : "no message";
+    throw new Error(`Empty answer${finishReason ? ` (${finishReason})` : ""}. message fields: [${keys}]. Check service worker console.`);
+  }
+
+  return answer;
+}
+
 // Create context menu on install (remove existing first to avoid duplicates)
 chrome.runtime.onInstalled.addListener(() => {
   chrome.contextMenus.removeAll(() => {
@@ -178,13 +278,17 @@ Output the answer ONLY.`;
         })
       });
 
-      data = await response.json();
+      data = await response.json().catch(() => null);
 
-      if (data.error) {
-        throw new Error(data.error.message);
+      if (!response.ok) {
+        const errMsg = data?.error?.message || `HTTP ${response.status} ${response.statusText}`;
+        throw new Error(errMsg);
+      }
+      if (data?.error) {
+        throw new Error(typeof data.error === "string" ? data.error : (data.error.message || JSON.stringify(data.error)));
       }
 
-      answer = data.candidates[0].content.parts[0].text.trim();
+      answer = extractGeminiAnswer(data);
     } else {
       // OpenAI-compatible API format (Groq, OpenAI, custom)
       const messages = [
@@ -209,38 +313,43 @@ Output the answer ONLY.`;
         messages.push({ role: "user", content: text });
       }
 
+      const headers = {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${apiKey}`
+      };
+      if (provider === "openrouter") {
+        // OpenRouter routes by these headers; some upstreams reject without them.
+        headers["HTTP-Referer"] = "https://chrome-extension/ai-quick-answer";
+        headers["X-Title"] = "AI Quick Answer Extension";
+      }
+
       response = await fetch(endpoint, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${apiKey}`
-        },
+        headers,
         body: JSON.stringify({
           model: model,
           messages: messages,
-          max_tokens: effectiveImageDataUrl ? 150 : 50,
+          max_tokens: effectiveImageDataUrl ? 1024 : 512,
           temperature: 0.1
         })
       });
 
-      data = await response.json();
+      data = await response.json().catch(() => null);
 
-      if (data.error) {
-        throw new Error(data.error.message);
+      if (!response.ok) {
+        const errMsg = data?.error?.message || `HTTP ${response.status} ${response.statusText}`;
+        throw new Error(errMsg);
       }
 
-      answer = data.choices[0].message.content.trim();
+      answer = extractChatAnswer(data);
     }
 
-    // Post-process answer to extract just the choice if model returned too much text
-    // Take first line if multiple lines, or first sentence if very long
-    const lines = answer.split('\n');
-    const firstLine = lines[0].trim();
-    if (firstLine.length < 200 && !firstLine.toLowerCase().includes('explanation')) {
+    // Post-process: take first non-empty line if short, else try to pull out a choice pattern.
+    const firstLine = answer.split('\n').map(l => l.trim()).find(l => l.length > 0) || answer.trim();
+    if (firstLine && firstLine.length < 200 && !firstLine.toLowerCase().includes('explanation')) {
       answer = firstLine;
     } else if (firstLine.length >= 200) {
-      // If still too long, try to extract just the choice (pattern like "A) text" or "1) text")
-      const choiceMatch = answer.match(/^[A-Z0-9]+[.)\s]+[^.!?\n]{1,150}/i);
+      const choiceMatch = answer.match(/[A-Z0-9]+[.)\s]+[^.!?\n]{1,150}/i);
       if (choiceMatch) {
         answer = choiceMatch[0].trim();
       }

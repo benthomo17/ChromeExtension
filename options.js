@@ -40,9 +40,16 @@ const PROVIDERS = {
     endpoint: "https://openrouter.ai/api/v1/chat/completions",
     apiKeyHint: 'Get your API key from <a href="https://openrouter.ai/keys" target="_blank">openrouter.ai/keys</a>',
     models: [
+      { id: "deepseek/deepseek-v4-pro", name: "DeepSeek V4 Pro" },
+      { id: "moonshotai/kimi-k2.6", name: "MoonshotAI Kimi K2.6" },
+      { id: "moonshotai/kimi-k2.5", name: "MoonshotAI Kimi K2.5" },
+      { id: "google/gemini-3-flash-preview", name: "Google Gemini 3 Flash Preview" },
       { id: "google/gemini-flash-1.5", name: "Google Gemini Flash 1.5" },
       { id: "mistralai/mistral-7b-instruct-v0.2", name: "Mistral 7B Instruct" },
+      { id: "openai/gpt-5.5", name: "OpenAI GPT-5.5" },
+      { id: "openai/gpt-4.1", name: "OpenAI GPT-4.1" },
       { id: "openai/gpt-4o", name: "OpenAI GPT-4o" },
+      { id: "anthropic/claude-sonnet-4.6", name: "Anthropic Claude Sonnet 4.6" },
       { id: "anthropic/claude-3-haiku", name: "Anthropic Claude 3 Haiku" },
       { id: "grok-4.20", name: "Grok 4.20" }
     ]
