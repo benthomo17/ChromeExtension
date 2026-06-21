@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "AI Answer Helper",
+  "name": "quizhelper",
   "version": "1.0",
   "description": "Send selected text to AI for quick answers",
   "permissions": [
